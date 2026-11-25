@@ -71,7 +71,9 @@ jobs:
           targets=["armeabi-v7a","arm64-v8a"]
           files=[]
           if data_version:
-              files_payload=get(f"{HOST}/app/{code}/version/{data_version}/files").json()\n          files_html=files_payload.get("content","")\n          print("VARIANT LIST HTML:",files_html,flush=True)
+              files_payload=get(f"{HOST}/app/{code}/version/{data_version}/files").json()
+              files_html=files_payload.get("content","")
+              print("VARIANT LIST HTML:",files_html,flush=True)
               fs=BeautifulSoup(files_html,"html.parser")
               container=fs.select_one(".content")
               current_arch=""
@@ -80,22 +82,35 @@ jobs:
                       classes=node.get("class") or []
                       if "variant" not in classes:
                           current_arch=" ".join(node.stripped_strings)
+                          print("ARCH GROUP:",repr(current_arch),flush=True)
                           continue
                       file_type=node.select_one(".v-file span")
                       report=node.select_one(".v-report[data-file-id]")
+                      print("VARIANT ROW:",current_arch,"FILE_ID:",report.get("data-file-id") if report else None,"TYPE:",file_type.get_text(strip=True) if file_type else None,flush=True)
                       if not report:
                           continue
                       for arch in targets:
-                          if arch in current_arch and arch not in files:
+                          if arch in current_arch and not any(x[0]==arch for x in files):
                               files.append((arch,report["data-file-id"],file_type.get_text(strip=True) if file_type else "unknown"))
           if not files:
               raise SystemExit("La API no devolvió variantes descargables para las arquitecturas requeridas")
           for arch,file_id,file_type in files:
-              page=get(f"{APP}/download/{file_id}-x").text
-              ds=BeautifulSoup(page,"html.parser")
+              page_resp=None
+              for candidate in [f"{APP}/download/{file_id}-x",f"{APP}/download/{file_id}",f"{HOST}/download/{file_id}-x",f"{HOST}/download/{file_id}"]:
+                  try:
+                      page_resp=S.get(candidate,timeout=45,allow_redirects=True)
+                      print("FILE PAGE:",candidate,"=>",page_resp.status_code,page_resp.url,len(page_resp.content),flush=True)
+                      if page_resp.status_code==200 and "detail-download-button" in page_resp.text:
+                          break
+                  except Exception as e:
+                      print("FILE PAGE ERROR:",candidate,str(e)[:300],flush=True)
+              if not page_resp or page_resp.status_code!=200:
+                  raise SystemExit("No se pudo abrir página de descarga de "+arch)
+              ds=BeautifulSoup(page_resp.text,"html.parser")
               button=ds.select_one("#detail-download-button")
               data_url=button.get("data-url") if button else None
               if not data_url:
+                  print("FILE PAGE BODY:",page_resp.text[:7000],flush=True)
                   raise SystemExit("No se obtuvo data-url para "+arch)
               download_url="https://dw.uptodown.com/dwn/"+data_url.lstrip("/")
               response=get(download_url)
@@ -103,7 +118,7 @@ jobs:
               filename=f"LostMiner-1.6.4-{arch}{ext}"
               Path(filename).write_bytes(response.content)
               with open("source-metadata.txt","a",encoding="utf-8") as f:
-                  f.write(f"{arch}\t{filename}\t{len(response.content)}\t{response.url}\n")
+                  f.write(f"{arch}\\t{filename}\\t{len(response.content)}\\t{response.url}\\n")
               print("SAVED",filename,len(response.content),flush=True)
           PY
       - name: Verify archive and split inventory
