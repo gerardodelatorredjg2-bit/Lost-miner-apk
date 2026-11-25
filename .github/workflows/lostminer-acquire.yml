@@ -1,0 +1,54 @@
+name: Acquire LostMiner 1.6.4 ABI variants
+
+on:
+  push:
+    paths:
+      - ".github/workflows/lostminer-acquire.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ARMv7 APKS reference
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-all-errors \
+            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36" \
+            "https://apk.dog/download?split=530936%2F3471202%2Flostminer" \
+            -o LostMiner-1.6.4-armv7.apks
+          file LostMiner-1.6.4-armv7.apks
+          sha256sum LostMiner-1.6.4-armv7.apks
+          unzip -t LostMiner-1.6.4-armv7.apks
+      - name: Download ARM64 APKS reference
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-all-errors \
+            -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36" \
+            "https://apk.dog/download?split=530938%2F3471202%2Flostminer" \
+            -o LostMiner-1.6.4-arm64.apks
+          file LostMiner-1.6.4-arm64.apks
+          sha256sum LostMiner-1.6.4-arm64.apks
+          unzip -t LostMiner-1.6.4-arm64.apks
+      - name: Inspect package split inventory
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          for path in sorted(Path(".").glob("*.apks")):
+              print(f"\n## {path.name}: {path.stat().st_size} bytes")
+              with zipfile.ZipFile(path) as z:
+                  for n in z.namelist():
+                      if n.endswith(".apk") or n.endswith("toc.pb"):
+                          print(n)
+          PY
+      - name: Upload source variants for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: LostMiner-1.6.4-ABI-source-APKS
+          path: "*.apks"
+          if-no-files-found: error
+          retention-days: 7
