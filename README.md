@@ -7,6 +7,7 @@ Initial analysis of the user-provided LostMiner XAPK, version **1.6.4 (build 142
 - `reports/initial-analysis.md` — package, split, DEX, native-library and localization findings.
 - `reports/multiplayer-map.md` — code-level map of LAN discovery, connections and chat.
 - `tools/README.md` — offline analysis tooling and current limitations.
+- `patch-kit/` — reproducible decompilation, ABI checks and LAN patch specification (no patched APK yet).
 
 ## Important status
 
