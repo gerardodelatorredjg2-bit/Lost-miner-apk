@@ -1,0 +1,130 @@
+name: Acquire LostMiner 1.6.4 from Uptodown
+
+on:
+  push:
+    paths:
+      - ".github/workflows/lostminer-uptodown.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download architecture packages
+        run: |
+          python -m pip install --quiet requests beautifulsoup4
+          python - <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          import requests
+          from bs4 import BeautifulSoup
+
+          APP = "https://lostminer.uptodown.com/android"
+          HOST = "https://lostminer.uptodown.com"
+          S = requests.Session()
+          S.headers.update({"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"})
+          def get(url):
+              r=S.get(url,timeout=45)
+              print("GET",r.status_code,r.url,r.headers.get("content-type"),len(r.content),flush=True)
+              r.raise_for_status()
+              return r
+
+          home=get(APP).text
+          soup=BeautifulSoup(home,"html.parser")
+          app_node=soup.select_one("#detail-app-name")
+          if not app_node or not app_node.get("data-code"):
+              raise SystemExit("No se pudo leer data-code de Uptodown")
+          code=app_node["data-code"]
+          print("Uptodown app code:",code,flush=True)
+
+          version_item=None
+          for i in range(1,21):
+              try:
+                  payload=get(f"{APP}/apps/{code}/versions/{i}").json()
+              except Exception as e:
+                  print("version endpoint",i,"not usable:",str(e)[:200],flush=True)
+                  continue
+              entries=payload.get("data") or []
+              version_item=next((x for x in entries if str(x.get("version"))=="1.6.4"),None)
+              if version_item:
+                  print("Found version record:",json.dumps(version_item,ensure_ascii=False)[:3000],flush=True)
+                  break
+          if not version_item:
+              raise SystemExit("No se encontró el registro 1.6.4 en la API de Uptodown")
+
+          vu=version_item.get("versionURL") or {}
+          version_url="/".join([str(vu.get("url","")).rstrip("/"),str(vu.get("extraURL","")).strip("/"),str(vu.get("versionID",""))])
+          if not version_url.startswith("http"):
+              raise SystemExit("versionURL incompleta: "+repr(vu))
+          version_html=get(version_url).text
+          vs=BeautifulSoup(version_html,"html.parser")
+          variant_button=vs.select_one(".button.variants")
+          data_version=variant_button.get("data-version") if variant_button else None
+
+          targets=["armeabi-v7a","arm64-v8a"]
+          files=[]
+          if data_version:
+              files_html=get(f"{HOST}/app/{code}/version/{data_version}/files").json().get("content","")
+              fs=BeautifulSoup(files_html,"html.parser")
+              container=fs.select_one(".content")
+              current_arch=""
+              if container:
+                  for node in container.find_all(recursive=False):
+                      classes=node.get("class") or []
+                      if "variant" not in classes:
+                          current_arch=" ".join(node.stripped_strings)
+                          continue
+                      file_type=node.select_one(".v-file span")
+                      report=node.select_one(".v-report[data-file-id]")
+                      if not report:
+                          continue
+                      for arch in targets:
+                          if arch in current_arch and arch not in files:
+                              files.append((arch,report["data-file-id"],file_type.get_text(strip=True) if file_type else "unknown"))
+          if not files:
+              raise SystemExit("La API no devolvió variantes descargables para las arquitecturas requeridas")
+          for arch,file_id,file_type in files:
+              page=get(f"{HOST}/download/{file_id}-x").text
+              ds=BeautifulSoup(page,"html.parser")
+              button=ds.select_one("#detail-download-button")
+              data_url=button.get("data-url") if button else None
+              if not data_url:
+                  raise SystemExit("No se obtuvo data-url para "+arch)
+              download_url="https://dw.uptodown.com/dwn/"+data_url.lstrip("/")
+              response=get(download_url)
+              ext=".xapk" if file_type.lower()=="xapk" else ".apkm"
+              filename=f"LostMiner-1.6.4-{arch}{ext}"
+              Path(filename).write_bytes(response.content)
+              with open("source-metadata.txt","a",encoding="utf-8") as f:
+                  f.write(f"{arch}\t{filename}\t{len(response.content)}\t{response.url}\n")
+              print("SAVED",filename,len(response.content),flush=True)
+          PY
+      - name: Verify archive and split inventory
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          for p in sorted(Path(".").glob("LostMiner-1.6.4-*")):
+              if p.suffix not in (".xapk",".apkm",".apks"): continue
+              print("\n##",p.name,p.stat().st_size)
+              with zipfile.ZipFile(p) as z:
+                  for n in z.namelist():
+                      if n.endswith(".apk") or n.endswith("manifest.json") or n.endswith("toc.pb"):
+                          print(n)
+          PY
+      - name: Upload reference packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: LostMiner-1.6.4-Uptodown-ABI-sources
+          path: |
+            LostMiner-1.6.4-*
+            source-metadata.txt
+          if-no-files-found: error
+          retention-days: 7
