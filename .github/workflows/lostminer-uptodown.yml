@@ -26,12 +26,12 @@ jobs:
           import requests
           from bs4 import BeautifulSoup
 
-          APP = "https://lostminer.uptodown.com/android"
-          HOST = "https://lostminer.uptodown.com"
+          APP = "https://lostminer.en.uptodown.com/android"
+          HOST = "https://lostminer.en.uptodown.com"
           S = requests.Session()
           S.headers.update({"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"})
           def get(url):
-              r=S.get(url,timeout=45)
+              r=S.get(url,timeout=60)
               print("GET",r.status_code,r.url,r.headers.get("content-type"),len(r.content),flush=True)
               r.raise_for_status()
               return r
@@ -51,78 +51,58 @@ jobs:
               except Exception as e:
                   print("version endpoint",i,"not usable:",str(e)[:200],flush=True)
                   continue
-              entries=payload.get("data") or []
-              version_item=next((x for x in entries if str(x.get("version"))=="1.6.4"),None)
+              version_item=next((x for x in (payload.get("data") or []) if str(x.get("version"))=="1.6.4"),None)
               if version_item:
-                  print("Found version record:",json.dumps(version_item,ensure_ascii=False)[:3000],flush=True)
+                  print("Found version record:",json.dumps(version_item,ensure_ascii=False)[:2000],flush=True)
                   break
           if not version_item:
-              raise SystemExit("No se encontró el registro 1.6.4 en la API de Uptodown")
+              raise SystemExit("No se encontró LostMiner 1.6.4")
 
           vu=version_item.get("versionURL") or {}
           version_url="/".join([str(vu.get("url","")).rstrip("/"),str(vu.get("extraURL","")).strip("/"),str(vu.get("versionID",""))])
-          if not version_url.startswith("http"):
-              raise SystemExit("versionURL incompleta: "+repr(vu))
           version_html=get(version_url).text
           vs=BeautifulSoup(version_html,"html.parser")
           variant_button=vs.select_one(".button.variants")
           data_version=variant_button.get("data-version") if variant_button else None
+          if not data_version:
+              raise SystemExit("No se encontró el ID del listado de variantes")
 
-          targets=["armeabi-v7a","arm64-v8a"]
-          files=[]
-          if data_version:
-              files_payload=get(f"{HOST}/app/{code}/version/{data_version}/files").json()
-              files_html=files_payload.get("content","")
-              print("VARIANT LIST HTML:",files_html,flush=True)
-              fs=BeautifulSoup(files_html,"html.parser")
-              container=fs.select_one(".content")
-              current_arch=""
-              if container:
-                  for node in container.find_all(recursive=False):
-                      classes=node.get("class") or []
-                      if "variant" not in classes:
-                          current_arch=" ".join(node.stripped_strings)
-                          print("ARCH GROUP:",repr(current_arch),flush=True)
-                          continue
-                      file_type=node.select_one(".v-file span")
-                      report=node.select_one(".v-report[data-file-id]")
-                      print("VARIANT ROW:",current_arch,"FILE_ID:",report.get("data-file-id") if report else None,"TYPE:",file_type.get_text(strip=True) if file_type else None,flush=True)
-                      if not report:
-                          continue
-                      for arch in targets:
-                          if arch in current_arch and not any(x[0]==arch for x in files):
-                              files.append((arch,report["data-file-id"],file_type.get_text(strip=True) if file_type else "unknown"))
-          if not files:
-              raise SystemExit("La API no devolvió variantes descargables para las arquitecturas requeridas")
-          for arch,file_id,file_type in files:
-              page_resp=None
-              for candidate in [f"{APP}/descargar/{file_id}-x",f"{APP}/descargar/{file_id}",f"{APP}/download/{file_id}-x",f"{APP}/download/{file_id}"]:
-                  try:
-                      page_resp=S.get(candidate,timeout=45,allow_redirects=True)
-                      print("FILE PAGE:",candidate,"=>",page_resp.status_code,page_resp.url,len(page_resp.content),flush=True)
-                      if page_resp.status_code==200 and "detail-download-button" in page_resp.text:
-                          break
-                  except Exception as e:
-                      print("FILE PAGE ERROR:",candidate,str(e)[:300],flush=True)
-              if not page_resp or page_resp.status_code!=200:
-                  raise SystemExit("No se pudo abrir página de descarga de "+arch)
-              ds=BeautifulSoup(page_resp.text,"html.parser")
-              button=ds.select_one("#detail-download-button")
-              data_url=button.get("data-url") if button else None
-              if not data_url:
-                  print("DETAIL BUTTON:",str(button)[:5000] if button else "NO BUTTON",flush=True)
-                  for term in ["detail-download-button","data-url","download-button","dw.uptodown.com","downloadUrl"]:
-                      at=page_resp.text.find(term)
-                      print("PAGE TERM",term,at,page_resp.text[max(0,at-1200):at+3000] if at>=0 else "",flush=True)
-                  raise SystemExit("No se obtuvo data-url para "+arch)
-              download_url="https://dw.uptodown.com/dwn/"+data_url.lstrip("/")
-              response=get(download_url)
-              ext=".xapk" if file_type.lower()=="xapk" else ".apkm"
-              filename=f"LostMiner-1.6.4-{arch}{ext}"
-              Path(filename).write_bytes(response.content)
-              with open("source-metadata.txt","a",encoding="utf-8") as f:
-                  f.write(f"{arch}\\t{filename}\\t{len(response.content)}\\t{response.url}\\n")
-              print("SAVED",filename,len(response.content),flush=True)
+          files_payload=get(f"{HOST}/app/{code}/version/{data_version}/files").json()
+          files_html=files_payload.get("content","")
+          fs=BeautifulSoup(files_html,"html.parser")
+          container=fs.select_one(".content")
+          candidates=[]
+          current_arch=""
+          if container:
+              for node in container.find_all(recursive=False):
+                  classes=node.get("class") or []
+                  if "variant" not in classes:
+                      current_arch=" ".join(node.stripped_strings)
+                      continue
+                  report=node.select_one(".v-report[data-file-id]")
+                  ftype=node.select_one(".v-file span")
+                  if report and "arm64-v8a" in current_arch and "armeabi-v7a" in current_arch:
+                      candidates.append((report["data-file-id"],ftype.get_text(strip=True) if ftype else "unknown",current_arch))
+          if not candidates:
+              raise SystemExit("No se halló un paquete que incluya ARMv7 y ARM64")
+          # Prefer the combined multi-ABI build and highest version-file ID.
+          file_id,file_type,archs=sorted(candidates,key=lambda x:int(x[0]))[-1]
+          print("Selected package:",file_id,file_type,archs,flush=True)
+
+          page=get(f"{APP}/download/{file_id}-x").text
+          ds=BeautifulSoup(page,"html.parser")
+          button=ds.select_one("#detail-download-button")
+          data_url=button.get("data-url") if button else None
+          if not data_url:
+              print("DOWNLOAD BUTTON:",str(button)[:5000] if button else "NO BUTTON",flush=True)
+              raise SystemExit("Uptodown no expuso el enlace binario")
+          download_url="https://dw.uptodown.com/dwn/"+data_url.lstrip("/")
+          response=get(download_url)
+          filename="LostMiner-1.6.4-ARMv7-ARM64.xapk" if file_type.lower()=="xapk" else "LostMiner-1.6.4-ARMv7-ARM64.apkm"
+          Path(filename).write_bytes(response.content)
+          with open("source-metadata.txt","w",encoding="utf-8") as f:
+              f.write(f"package=com.fsilva.marcelo.lostminer\\nversion=1.6.4\\nfile_id={file_id}\\narchitectures={archs}\\nfilename={filename}\\nbytes={len(response.content)}\\nsource={response.url}\\n")
+          print("SAVED",filename,len(response.content),flush=True)
           PY
       - name: Verify archive and split inventory
         run: |
