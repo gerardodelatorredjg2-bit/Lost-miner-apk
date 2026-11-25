@@ -91,7 +91,7 @@ jobs:
           if not files:
               raise SystemExit("La API no devolvió variantes descargables para las arquitecturas requeridas")
           for arch,file_id,file_type in files:
-              page=get(f"{HOST}/download/{file_id}-x").text
+              page=get(f"{APP}/download/{file_id}-x").text
               ds=BeautifulSoup(page,"html.parser")
               button=ds.select_one("#detail-download-button")
               data_url=button.get("data-url") if button else None
