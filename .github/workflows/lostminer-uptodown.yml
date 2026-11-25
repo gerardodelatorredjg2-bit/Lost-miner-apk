@@ -110,7 +110,10 @@ jobs:
               button=ds.select_one("#detail-download-button")
               data_url=button.get("data-url") if button else None
               if not data_url:
-                  print("FILE PAGE BODY:",page_resp.text[:7000],flush=True)
+                  print("DETAIL BUTTON:",str(button)[:5000] if button else "NO BUTTON",flush=True)
+                  for term in ["detail-download-button","data-url","download-button","dw.uptodown.com","downloadUrl"]:
+                      at=page_resp.text.find(term)
+                      print("PAGE TERM",term,at,page_resp.text[max(0,at-1200):at+3000] if at>=0 else "",flush=True)
                   raise SystemExit("No se obtuvo data-url para "+arch)
               download_url="https://dw.uptodown.com/dwn/"+data_url.lstrip("/")
               response=get(download_url)
