@@ -71,7 +71,7 @@ jobs:
           targets=["armeabi-v7a","arm64-v8a"]
           files=[]
           if data_version:
-              files_html=get(f"{HOST}/app/{code}/version/{data_version}/files").json().get("content","")
+              files_payload=get(f"{HOST}/app/{code}/version/{data_version}/files").json()\n          files_html=files_payload.get("content","")\n          print("VARIANT LIST HTML:",files_html,flush=True)
               fs=BeautifulSoup(files_html,"html.parser")
               container=fs.select_one(".content")
               current_arch=""
