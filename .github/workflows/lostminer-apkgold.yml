@@ -1,0 +1,56 @@
+name: Download signed LostMiner 1.6.4 ARM ABI APKS
+
+on:
+  push:
+    paths:
+      - ".github/workflows/lostminer-apkgold.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ARMv7 and ARM64 APKS
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(-L --fail --show-error --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180)
+          ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36'
+          ref='https://lostminer.apkgold.ae/android-4.0.4'
+          curl "${common[@]}" -A "$ua" -e "$ref" \
+            'https://apkgold.ae/download?split=530936%2F3471202%2Flostminer' \
+            -o LostMiner-1.6.4-armeabi-v7a.apks
+          curl "${common[@]}" -A "$ua" -e "$ref" \
+            'https://apkgold.ae/download?split=530938%2F3471202%2Flostminer' \
+            -o LostMiner-1.6.4-arm64-v8a.apks
+          file LostMiner-1.6.4-*.apks
+          sha256sum LostMiner-1.6.4-*.apks
+          unzip -t LostMiner-1.6.4-armeabi-v7a.apks
+          unzip -t LostMiner-1.6.4-arm64-v8a.apks
+      - name: Inventory splits, manifests and libraries
+        run: |
+          python3 - <<'PY'
+          import zipfile, io, hashlib
+          from pathlib import PurePosixPath
+          for name in ["LostMiner-1.6.4-armeabi-v7a.apks","LostMiner-1.6.4-arm64-v8a.apks"]:
+              print("\\n##",name)
+              with zipfile.ZipFile(name) as z:
+                  for part in z.namelist():
+                      if part.endswith(".apk"):
+                          data=z.read(part)
+                          print(part,len(data),hashlib.sha256(data).hexdigest())
+                          with zipfile.ZipFile(io.BytesIO(data)) as apk:
+                              for item in apk.namelist():
+                                  if item.endswith(".so"):
+                                      print("   ",item)
+          PY
+      - name: Upload original signed APKS
+        uses: actions/upload-artifact@v4
+        with:
+          name: LostMiner-1.6.4-ARM7-ARM64-APKS
+          path: "LostMiner-1.6.4-*.apks"
+          if-no-files-found: error
+          retention-days: 7
