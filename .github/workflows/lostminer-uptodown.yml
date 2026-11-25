@@ -96,7 +96,7 @@ jobs:
               raise SystemExit("La API no devolvió variantes descargables para las arquitecturas requeridas")
           for arch,file_id,file_type in files:
               page_resp=None
-              for candidate in [f"{APP}/download/{file_id}-x",f"{APP}/download/{file_id}",f"{HOST}/download/{file_id}-x",f"{HOST}/download/{file_id}"]:
+              for candidate in [f"{APP}/descargar/{file_id}-x",f"{APP}/descargar/{file_id}",f"{APP}/download/{file_id}-x",f"{APP}/download/{file_id}"]:
                   try:
                       page_resp=S.get(candidate,timeout=45,allow_redirects=True)
                       print("FILE PAGE:",candidate,"=>",page_resp.status_code,page_resp.url,len(page_resp.content),flush=True)
