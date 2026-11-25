@@ -1,0 +1,10 @@
+LostMiner 1.6.4 build 142 — estado del trabajo
+
+KIT DE TRABAJO: preparado
+PARCHE LAN REAL: pendiente de desensamblado oficial y edición verificada
+ARMV7: no está en el XAPK auditado; requiere bibliotecas 32-bit compatibles
+ARM64: presente en el XAPK original
+APK RECONSTRUIDA/FIRMADA: no
+PRUEBA REAL EN DOS DISPOSITIVOS: no
+
+Este kit no modifica ni sustituye el XAPK original.
